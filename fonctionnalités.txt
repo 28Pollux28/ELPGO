@@ -1,0 +1,10 @@
+couleurs :
+    filtre, inverser, transformation
+Disposition :
+    rotation, renversement
+Transformation :
+    Réduction, Flou, Pixelisation, séparation d'image
+Contour :
+    Détection de contours, Flouter arrière plan
+Calque :
+    Superposition
