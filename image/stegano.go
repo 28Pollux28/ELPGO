@@ -1,7 +1,11 @@
 package image
 
 import (
+	"Projet/bits"
 	mathUtil "Projet/utils"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"fmt"
 	"image"
 	"math"
@@ -143,11 +147,181 @@ func quantize(args ...any) []any {
 	return nil
 }
 
-func Main() {
-	img := LoadImage("./test/webb.png")
-	qualityFactor := 50
+func applyPermutation(args ...any) []any {
+	permutation := args[0].(*[]int)
+	key := args[1].([]int)
+	permutationKey := args[2].(*[]int)
+	for i := 0; i < len(*permutation); i++ {
+		(*permutationKey)[i/8] = key[(*permutation)[i]/8] & (1 << uint((*permutation)[i]%8))
+	}
+	return nil
+}
 
-	nWorkers := 100
+func Main() {
+	img := LoadImage("./test/128.png")
+	qualityFactor := 50
+	message := "Hello, world!azertyuioihgfdsdfghjhgfdefghjiuytrfedfgvhjutfvgbhytrfvgbhytrfvbghytrfdcvgbhytrfcvgtrfdcvbgtrfdcfvgtrdcvfgtrfdcvgtrfdcvfgtrfdcvgytfdcvfgtrfdcvgtrfvgtyrfcvgytfvghuyhjkolhbjklhghjigfdcfvgbhdsdfqsdfresdfresxdcfgtfdcfvghgfvbnjkgbnjkgvbnjhgvfcderfghfdcvbhgfdrtghjygtfdsedrfghjiuygtfdsdefghjhgfdertghjk"
+	message += message
+	message += message
+	messageBytes := []byte(message)
+	messLen := len(messageBytes)
+
+	permutation128 := []int{
+		41, 36, 52, 50, 32, 122, 127, 113,
+		26, 106, 37, 28, 73, 16, 91, 63,
+		103, 57, 44, 59, 102, 22, 62, 6,
+		84, 7, 38, 116, 64, 12, 1, 100,
+		34, 123, 30, 96, 43, 40, 109, 24,
+		119, 2, 104, 60, 49, 69, 101, 94,
+		112, 76, 114, 58, 74, 20, 47, 124,
+		19, 46, 98, 99, 89, 31, 18, 8,
+		3, 93, 67, 121, 108, 88, 27, 82,
+		110, 81, 11, 53, 83, 72, 13, 77,
+		61, 87, 56, 54, 78, 90, 9, 120,
+		92, 107, 97, 29, 126, 86, 33, 23,
+		48, 0, 10, 39, 70, 42, 79, 68,
+		14, 118, 111, 21, 51, 4, 80, 66,
+	}
+	permutation96 := []int{
+		43, 13, 76, 48, 44, 110, 67, 36,
+		22, 46, 80, 30, 31, 66, 8, 11,
+		101, 72, 68, 28, 87, 2, 26, 61,
+		74, 14, 88, 33, 10, 9, 96, 57,
+		104, 103, 83, 69, 4, 102, 99, 77,
+		86, 20, 82, 62, 0, 70, 16, 29,
+		64, 12, 49, 3, 111, 52, 40, 19,
+		7, 108, 53, 60, 37, 93, 39, 79,
+		73, 41, 54, 100, 109, 78, 63, 91,
+		21, 84, 90, 106, 58, 23, 34, 97,
+		1, 32, 51, 92, 98, 18, 27, 50,
+		89, 47, 42, 81, 6, 94, 24, 56,
+	}
+
+	permutation1282 := []int{
+		40, 59, 74, 60, 6, 67, 76, 70,
+		0, 86, 22, 30, 86, 26, 56, 86,
+		64, 61, 4, 47, 91, 23, 21, 35,
+		92, 4, 79, 9, 12, 86, 6, 5,
+		71, 84, 95, 75, 62, 6, 18, 8,
+		25, 3, 65, 3, 54, 41, 52, 78,
+		85, 1, 6, 63, 32, 3, 38, 34,
+		57, 53, 31, 69, 76, 11, 26, 33,
+		88, 4, 14, 51, 4, 45, 43, 26,
+		55, 81, 80, 72, 56, 77, 42, 19,
+		76, 58, 82, 7, 44, 66, 76, 76,
+		26, 87, 76, 76, 28, 39, 10, 50,
+		93, 2, 48, 13, 3, 20, 13, 36,
+		89, 46, 13, 83, 37, 29, 49, 90,
+		56, 4, 86, 16, 68, 4, 73, 6,
+		76, 15, 56, 27, 17, 94, 24, 76,
+	}
+
+	CConj := make([]byte, 0)
+
+	// generate private key
+	privateKey, err := rsa.GenerateKey(rand.Reader, 1024)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	// marshal private key to bytes
+	privateKeyBytes := x509.MarshalPKCS1PrivateKey(privateKey)
+	//tst := x509.MarshalPKCS8PrivateKey(&privateKey)
+
+	publicKeyBytes := x509.MarshalPKCS1PublicKey((*privateKey).Public().(*rsa.PublicKey))
+	for len(CConj) < messLen {
+		concatKey := make([]byte, 16)
+		for i := 0; i < 8; i++ {
+			concatKey[2*i] = privateKeyBytes[i]
+			concatKey[2*i+1] = publicKeyBytes[i]
+		}
+		C0 := make([]byte, 2)
+		for i := range concatKey {
+			bits.SetBit(&C0, i, bits.GetBit(&concatKey, i*8+7))
+		}
+
+		permKey := make([]byte, 14)
+		for i := 0; i < 112; i++ {
+			bits.SetBit(&permKey, i, bits.GetBit(&concatKey, permutation128[i]))
+		}
+
+		cL := make([][]byte, 16)
+		cR := make([][]byte, 16)
+		for i := 0; i < 16; i++ {
+			cL[i] = make([]byte, 7)
+			cR[i] = make([]byte, 7)
+		}
+		copy(cL[0], permKey[:7])
+		copy(cR[0], permKey[7:14])
+
+		for i := 1; i < 16; i++ {
+			copy(cL[i], cL[i-1])
+			copy(cR[i], cR[i-1])
+			if i == 1 || i == 2 || i == 9 {
+				bits.LeftShift(&cL[i], 1)
+				bits.LeftShift(&cR[i], 1)
+			} else {
+				bits.LeftShift(&cL[i], 2)
+				bits.LeftShift(&cR[i], 2)
+			}
+		}
+		cLR := make([][]byte, 15)
+		for i := 0; i < 15; i++ {
+			cLR[i] = make([]byte, 14)
+			copy(cLR[i], cL[i+1])
+			copy(cLR[i][7:], cR[i+1])
+		}
+		c := make([][]byte, 15)
+		for i := 0; i < 15; i++ {
+			c[i] = make([]byte, 12)
+			for j := 0; j < 96; j++ {
+				bits.SetBit(&c[i], j, bits.GetBit(&cLR[i], permutation96[j]))
+			}
+		}
+
+		CXor := make([][]byte, 14)
+		for j := 1; j < 15; j++ {
+			CXor[j-1] = make([]byte, 14)
+			for i := 0; i < 14; i++ {
+				bits.SetBit(&CXor[j-1], i, bits.GetBit(&c[j-1], i)^bits.GetBit(&c[j], i))
+			}
+		}
+
+		CChap := make([][]byte, 14)
+		for j := 1; j < 15; j++ {
+			CChap[j-1] = make([]byte, 16)
+			for i := 0; i < 128; i++ {
+				bits.SetBit(&CChap[j-1], i, bits.GetBit(&CXor[j-1], permutation1282[i]))
+			}
+			for i := 0; i < 16; i++ {
+				CChap[j-1][i] ^= C0[i%2]
+			}
+		}
+
+		for i := 0; i < 14; i++ {
+			CConj = append(CConj, CChap[i]...)
+		}
+		if len(CConj) < messLen {
+			privateKeyBytes = CChap[12][0:8]
+			publicKeyBytes = CChap[13][8:16]
+		}
+		//fmt.Println(bits.DisplayBits(&concatKey))
+		//fmt.Println(bits.DisplayBits(&permKey))
+		//fmt.Println(bits.DisplayBits(&C0))
+		//fmt.Println("cl & cr [0]")
+		//fmt.Println(bits.DisplayBits(&cL[0]))
+		//fmt.Println(bits.DisplayBits(&cR[0]))
+		//fmt.Println("clr [0]")
+		//fmt.Println(bits.DisplayBits(&cLR[0]))
+		//fmt.Println("c [0]")
+		//fmt.Println(bits.DisplayBits(&c[0]))
+		//fmt.Println("cchap [0]")
+		//fmt.Println(bits.DisplayBits(&CChap[0]))
+	}
+	fmt.Println(len(CConj), messLen)
+
+	nWorkers := 12
 	jobQueue := make(chan Job, nWorkers+1)
 	resultQueue := make(chan []any, nWorkers+1)
 	var wg sync.WaitGroup
@@ -156,6 +330,7 @@ func Main() {
 		workers[i] = Worker{Id: i, JobQueue: jobQueue, ResultQueue: resultQueue, WG: &wg}
 		go workers[i].run()
 	}
+
 	t1 := time.Now().UnixMicro()
 	go func() {
 		for i := 0; i < img.Rect.Dy(); i++ {
@@ -259,12 +434,6 @@ func Main() {
 			}()
 			wg.Wait()
 			coeffVector := make([]float64, 64)
-			var matrix [8][8]float64
-			for i := 0; i < 8; i++ {
-				for j := 0; j < 8; j++ {
-					matrix[i][j] = float64(i*8 + j)
-				}
-			}
 			x := 0
 			y := 0
 			dir := 1
@@ -294,7 +463,6 @@ func Main() {
 					}
 				}
 			}
-			//fmt.Println(coeffVector)
 		}
 	}
 
