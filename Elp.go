@@ -2,6 +2,7 @@ package main
 
 import (
 	image2 "Projet/image"
+	"Projet/stegano"
 	"fmt"
 	"image"
 	"image/png"
@@ -57,7 +58,7 @@ func main() {
 	//t2 := time.Now().UnixMilli()
 	//fmt.Println("Time taken:", t2-t1, "ms")
 	//saveImage("./test/test.png", img)
-	image2.Main()
+	stegano.Main("test")
 
 }
 
