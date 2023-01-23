@@ -2,13 +2,11 @@ package stegano
 
 import (
 	"Projet/bits"
-	image2 "Projet/image"
 	"fmt"
 	"image"
-	"image/png"
 	"math"
-	"os"
 	"sync"
+	"time"
 )
 
 type Job struct {
@@ -236,7 +234,24 @@ func invDCT(args ...any) []any {
 	return nil
 }
 
-func Main(message string) {
+func convertBlockToImage(args ...any) []any {
+	invBlock := args[0].(*[][]float64)
+	imgResult := args[1].(*image.RGBA)
+	bNum := args[2].(int)
+	bX := imgResult.Stride * 3 / 4 / 8
+	bNumMod3 := bNum % 3
+	for i := 0; i < 8; i++ {
+		for j := 0; j < 8; j++ {
+			imgResult.Pix[((bNum/bX)*8+i)*imgResult.Stride+8*((bNum-bNumMod3)%bX+(bNum%bX)/3)+bNumMod3+j*4] = byte((*invBlock)[i][j])
+			if bNum%3 == 2 {
+				imgResult.Pix[((bNum/bX)*8+i)*imgResult.Stride+8*((bNum-bNumMod3)%bX+(bNum%bX)/3)+bNumMod3+j*4+1] = 255
+			}
+		}
+	}
+	return nil
+}
+
+func Encode(message string, key [8]byte, img *image.RGBA, qualityFactor int) *image.RGBA {
 	nWorkers := 12
 	jobQueue := make(chan Job, nWorkers+1)
 	resultQueue := make(chan []any, nWorkers+1)
@@ -247,11 +262,13 @@ func Main(message string) {
 		go workers[i].run()
 	}
 
-	message = "Hello World ! It's a beautiful day to try and do steganography!"
-	img := image2.LoadImage("./test/512.png")
-	qualityFactor := 75
+	//message = "Hello World ! It's a beautiful day to try and do steganography!"
 
-	privateKeyBytes := []byte{48, 130, 2, 94, 2, 1, 0, 2}
+	//img := image2.LoadImage("./test/512.png")
+	//privateKeyBytes := []byte{48, 130, 2, 94, 2, 1, 0, 2}
+	privateKeyBytes := key[:]
+
+	tinitial := time.Now()
 	//convert message to bytes
 	messageBytes := append([]byte(message), 26)
 	//cut the message into 16 bytes chunks and add padding if needed
@@ -274,19 +291,17 @@ func Main(message string) {
 	}
 	if (nBlocks/4)*bitsPer4Blocks < len(messageBytes)*8 {
 		fmt.Println("Message is too long for this image")
-		return
+		return nil
 	}
 
 	chunks := make([][]byte, 0)
 	for i := 0; i < len(messageBytes); i += 8 {
-		fmt.Println(i, float64(i+8), float64(len(messageBytes)))
 		chunk := messageBytes[i:int(math.Min(float64(i+8), float64(len(messageBytes))))]
 		if len(chunk) < 8 {
 			chunk = append(chunk, make([]byte, 8-len(chunk))...)
 		}
 		chunks = append(chunks, chunk)
 	}
-	fmt.Println(chunks)
 
 	var zigzag0 []byte = []byte{
 		1, 2, 6, 7, 15, 16, 28, 29,
@@ -461,7 +476,6 @@ func Main(message string) {
 		}
 	}()
 	wg.Wait()
-	fmt.Println("nOnes: ", nOnes)
 	//embed the message into the DC coefficients
 	wg.Add(1)
 	go func() {
@@ -522,31 +536,15 @@ func Main(message string) {
 		}
 	}()
 	wg.Wait()
-
-	// save the image
-	f, err := os.Create("result.png")
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	defer f.Close()
-	png.Encode(f, imgResult)
-
-}
-
-func convertBlockToImage(args ...any) []any {
-	invBlock := args[0].(*[][]float64)
-	imgResult := args[1].(*image.RGBA)
-	bNum := args[2].(int)
-	bX := imgResult.Stride * 3 / 4 / 8
-	bNumMod3 := bNum % 3
-	for i := 0; i < 8; i++ {
-		for j := 0; j < 8; j++ {
-			imgResult.Pix[((bNum/bX)*8+i)*imgResult.Stride+8*((bNum-bNumMod3)%bX+(bNum%bX)/3)+bNumMod3+j*4] = byte((*invBlock)[i][j])
-			if bNum%3 == 2 {
-				imgResult.Pix[((bNum/bX)*8+i)*imgResult.Stride+8*((bNum-bNumMod3)%bX+(bNum%bX)/3)+bNumMod3+j*4+1] = 255
-			}
-		}
-	}
-	return nil
+	tfinal := time.Now()
+	fmt.Println("Time taken: ", tfinal.Sub(tinitial))
+	//// save the image
+	//f, err := os.Create("result.png")
+	//if err != nil {
+	//	fmt.Println(err)
+	//	return
+	//}
+	//defer f.Close()
+	//png.Encode(f, imgResult)
+	return imgResult
 }

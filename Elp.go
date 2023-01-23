@@ -58,7 +58,15 @@ func main() {
 	//t2 := time.Now().UnixMilli()
 	//fmt.Println("Time taken:", t2-t1, "ms")
 	//saveImage("./test/test.png", img)
-	stegano.Main("test")
+	message := "Hello World ! It's a beautiful day to try and do steganography!"
+	privateKeyBytes := [8]byte{48, 130, 2, 94, 2, 1, 0, 2}
+	img := image2.LoadImage("./test/128.png")
+	qualityFactor := 49
+
+	stegoImg := stegano.Encode(message, privateKeyBytes, img, qualityFactor)
+	if stegoImg != nil {
+		image2.SaveImage("./output.png", stegoImg)
+	}
 
 }
 
