@@ -8,6 +8,7 @@ import (
 	"image/png"
 	"os"
 	"sync"
+	"time"
 	//"time"
 )
 
@@ -20,53 +21,30 @@ func worker(wg *sync.WaitGroup, img *image.RGBA, jobs chan []uint /*, results ch
 }
 
 func main() {
-	//t1 := time.Now().UnixMilli()
-	//imgFile, _ := os.ReadFile("./test/4.png")
-	//f, _ := os.Create("./test/intent.txt")
-	//f.Write([]byte("image\n"))
-	//f.Write(imgFile)
-	//f.Write([]byte("\nendimage\n"))
-	//f.Close()
-	//
-	//f, _ = os.Open("./test/intent.txt")
-	//defer f.Close()
-	//intent.ReadIntent(f)
 
-	//img := loadImage("./test/largeImage.png")
-	////fmt.Println(img.Stride)
-	//t1 := time.Now().UnixMilli()
-	//var wg sync.WaitGroup
-	//chO := make(chan []uint, 50)
-	////chI := make(chan []uint8)
-	//
-	//for i := 0; i < 48; i++ {
-	//	go func() {
-	//		worker(&wg, img, chO)
-	//	}()
-	//}
-	//go func() {
-	//	for i := 0; i < img.Rect.Dy(); i++ {
-	//		wg.Add(1)
-	//
-	//		chO <- []uint{uint(i*img.Stride + 0), uint((i+1)*img.Stride - 1)}
-	//	}
-	//	fmt.Println("i")
-	//}()
-	//
-	//wg.Wait()
-	////image2.Filter(img, 1.5, -1.0, 0, -1)
-	//t2 := time.Now().UnixMilli()
-	//fmt.Println("Time taken:", t2-t1, "ms")
-	//saveImage("./test/test.png", img)
-	message := "Hello World ! It's a beautiful day to try and do steganography!"
-	privateKeyBytes := [8]byte{48, 130, 2, 94, 2, 1, 0, 2}
-	img := image2.LoadImage("./test/128.png")
-	qualityFactor := 49
-
-	stegoImg := stegano.Encode(message, privateKeyBytes, img, qualityFactor)
-	if stegoImg != nil {
-		image2.SaveImage("./output.png", stegoImg)
+	data, _ := os.ReadFile("./test/512.png") //"Bonjour Gaspard, prochaine étape, envoie moi ta carte bleue :)" /*orld ! It's a beautiful day to try and do steganography!*/
+	privateKeyBytes := []byte{48, 130, 2, 94, 2, 1, 0, 2}
+	img := image2.LoadImage("./test/webb.png")
+	//fmt.Println("sending message : ", data)
+	stegoImg, err := stegano.Encode(data, privateKeyBytes, img)
+	if err != nil {
+		fmt.Println(err)
+	} else {
+		if stegoImg != nil {
+			image2.SaveImage("./output.png", stegoImg)
+		}
 	}
+	time.Sleep(1 * time.Second)
+
+	message2, _ := stegano.Decode(stegoImg, privateKeyBytes)
+	create, err := os.Create("./output2.png")
+	if err != nil {
+		fmt.Println(err)
+	}
+	create.Write(message2)
+	create.Close()
+
+	//fmt.Println("got message: ", string(message2))
 
 }
 

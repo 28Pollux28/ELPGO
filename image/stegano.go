@@ -3,12 +3,11 @@ package image
 import (
 	"Projet/bits"
 	mathUtil "Projet/utils"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
 	"fmt"
 	"image"
+	"image/png"
 	"math"
+	"os"
 	"sync"
 	"time"
 )
@@ -63,6 +62,19 @@ func break8x8(args ...any) []any {
 	return nil
 }
 
+func merge8x8(args ...any) []any {
+	blocks := args[0].(*[][][]int)
+	arr := args[1].(*[]int)
+	n := args[2].(int)
+	p := args[3].(int)
+	k := args[4].(int)
+
+	for i := 0; i < 8; i++ {
+		copy((*arr)[n*((k/p)*8+i)+(k%p)*8:n*((k/p)*8+i)+k%p*8+8], (*blocks)[k][i])
+	}
+	return nil
+}
+
 func cosines(args ...any) []any {
 	cosinesArr := args[0].(*[][]float64)
 	i := args[1].(int)
@@ -94,10 +106,11 @@ func dct(args ...any) []any {
 	return nil
 }
 
-func idct(args ...any) []any {
+func invdct(args ...any) []any {
 	block := args[0].(*[][]int)
 	dctBlock := args[1].(*[][]float64)
 	for i := 0; i < 8; i++ {
+		(*block)[i] = make([]int, 8)
 		for j := 0; j < 8; j++ {
 			sum := 0.0
 			for u := 0; u < 8; u++ {
@@ -134,15 +147,25 @@ func quantize(args ...any) []any {
 	QDCTBlocks := args[0].(*[][][]float64)
 	dctBlocks := args[1].(*[][][]float64)
 	QMatrix := args[2].(*[8][8]int)
-	qualityFactor := args[3].(int)
-	k := args[4].(int)
-	i := args[5].(int)
-	j := args[6].(int)
+	//qualityFactor := args[3].(int)
+	k := args[3].(int)
+	i := args[4].(int)
+	j := args[5].(int)
+	factor := args[6].(float64)
+	(*QDCTBlocks)[k][i][j] = math.Round((*dctBlocks)[k][i][j] / (factor * float64((*QMatrix)[i][j])))
+	return nil
+}
 
-	if qualityFactor > 50 {
-		(*QDCTBlocks)[k][i][j] = math.Round((*dctBlocks)[k][i][j] / float64((100-qualityFactor)/50*(*QMatrix)[i][j]))
-	} else {
-		(*QDCTBlocks)[k][i][j] = math.Round((*dctBlocks)[k][i][j] * float64(50/qualityFactor*(*QMatrix)[i][j]))
+func dequantize(args ...any) []any {
+	invQDCTBlocks := args[0].(*[][][]float64)
+	invDCTBlocks := args[1].(*[][][]float64)
+	QMatrix := args[2].(*[8][8]int)
+	k := args[3].(int)
+	i := args[4].(int)
+	j := args[5].(int)
+	factor := args[6].(float64)
+	for l := 0; l < 8; l++ {
+		(*invDCTBlocks)[k][i][j] += (*invQDCTBlocks)[k][i][l] * (*invQDCTBlocks)[k][l][j] * float64((*QMatrix)[i][l]) * float64((*QMatrix)[l][j]) * factor * factor
 	}
 	return nil
 }
@@ -157,14 +180,40 @@ func applyPermutation(args ...any) []any {
 	return nil
 }
 
+func R(x int, si int) int {
+	if si == 0 {
+		if x%2 == 0 {
+			return x
+		} else {
+			return x - 1
+		}
+	} else {
+		if x%2 == 0 {
+			return x + 1
+		} else {
+			return x
+		}
+	}
+}
+
+func invR(y int) int {
+	if y%2 == 0 {
+		return 0
+	} else {
+		return 1
+	}
+}
+
 func Main() {
 	img := LoadImage("./test/128.png")
 	qualityFactor := 50
-	message := "Hello, world!azertyuioihgfdsdfghjhgfdefghjiuytrfedfgvhjutfvgbhytrfvgbhytrfvbghytrfdcvgbhytrfcvgtrfdcvbgtrfdcfvgtrdcvfgtrfdcvgtrfdcvfgtrfdcvgytfdcvfgtrfdcvgtrfvgtyrfcvgytfvghuyhjkolhbjklhghjigfdcfvgbhdsdfqsdfresdfresxdcfgtfdcfvghgfvbnjkgbnjkgvbnjhgvfcderfghfdcvbhgfdrtghjygtfdsedrfghjiuygtfdsdefghjhgfdertghjk"
-	message += message
-	message += message
+	message := "Hello, world" //!azertyuioihgfdsdfghjhgfdefghjiuytrfedfgvhjutfvgbhytrfvgbhytrfvbghytrfdcvgbhytrfcvgtrfdcvbgtrfdcfvgtrdcvfgtrfdcvgtrfdcvfgtrfdcvgytfdcvfgtrfdcvgtrfvgtyrfcvgytfvghuyhjkolhbjklhghjigfdcfvgbhdsdfqsdfresdfresxdcfgtfdcfvghgfvbnjkgbnjkgvbnjhgvfcderfghfdcvbhgfdrtghjygtfdsedrfghjiuygtfdsdefghjhgfdertghjk"
+	//message += message
+	//message += message
 	messageBytes := []byte(message)
 	messLen := len(messageBytes)
+	mode := 0 //0 - Embedding, 1 - Extraction
+	messageDecodeBytes := make([]byte, 0)
 
 	permutation128 := []int{
 		41, 36, 52, 50, 32, 122, 127, 113,
@@ -215,21 +264,58 @@ func Main() {
 		56, 4, 86, 16, 68, 4, 73, 6,
 		76, 15, 56, 27, 17, 94, 24, 76,
 	}
-
+	const EOMLength = 16
+	eom := []byte{234, 199, 233, 17, 128, 190, 27, 208, 137, 223, 186, 83, 41, 82, 107, 26}
+	messageBytes = append(messageBytes, eom...)
 	CConj := make([]byte, 0)
 
 	// generate private key
-	privateKey, err := rsa.GenerateKey(rand.Reader, 1024)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
+	//privateKey, err := rsa.GenerateKey(rand.Reader, 1024)
+	//if err != nil {
+	//	fmt.Println(err)
+	//	return
+	//}
 
 	// marshal private key to bytes
-	privateKeyBytes := x509.MarshalPKCS1PrivateKey(privateKey)
+	//privateKeyBytes := x509.MarshalPKCS1PrivateKey(privateKey)
+	//fmt.Println("Private key: ", privateKeyBytes)
 	//tst := x509.MarshalPKCS8PrivateKey(&privateKey)
+	privateKeyBytes := []byte{48, 130, 2, 94, 2, 1, 0, 2, 129, 129, 0, 169, 220, 206, 138, 229, 219, 40, 160, 216, 236,
+		57, 19, 232, 109, 185, 145, 220, 114, 38, 234, 241, 149, 113, 210, 149, 83, 41, 56, 98, 136, 70, 179, 16, 170,
+		243, 93, 249, 205, 119, 51, 28, 221, 169, 131, 180, 248, 161, 167, 135, 15, 126, 194, 160, 228, 96, 36, 228,
+		254, 80, 4, 136, 3, 95, 22, 104, 245, 195, 3, 116, 112, 73, 87, 172, 107, 255, 56, 69, 132, 211, 36, 24, 239,
+		132, 153, 199, 26, 81, 18, 64, 188, 14, 91, 246, 208, 109, 64, 170, 66, 147, 254, 164, 39, 109, 162, 23, 137,
+		181, 114, 68, 84, 126, 203, 225, 48, 171, 178, 25, 174, 199, 193, 225, 252, 63, 245, 59, 148, 108, 91, 2, 3, 1,
+		0, 1, 2, 129, 129, 0, 133, 179, 112, 187, 177, 187, 52, 154, 142, 196, 57, 21, 43, 113, 26, 140, 238, 8, 200,
+		11, 76, 6, 198, 165, 235, 181, 158, 143, 108, 55, 57, 246, 254, 90, 160, 222, 202, 158, 104, 129, 201, 233,
+		203, 225, 8, 148, 95, 161, 158, 212, 154, 129, 21, 229, 76, 172, 29, 182, 243, 66, 237, 208, 65, 137, 248, 122,
+		192, 162, 180, 77, 3, 111, 50, 115, 144, 227, 74, 243, 128, 247, 141, 26, 68, 198, 162, 59, 54, 204, 216, 160,
+		166, 62, 177, 243, 54, 178, 161, 63, 173, 230, 77, 41, 23, 136, 58, 79, 255, 181, 230, 188, 153, 146, 18, 96,
+		99, 190, 153, 7, 248, 15, 57, 99, 139, 144, 255, 170, 88, 105, 2, 65, 0, 198, 106, 196, 196, 190, 50, 130, 79,
+		188, 12, 57, 28, 238, 200, 11, 214, 51, 41, 188, 252, 123, 239, 237, 97, 202, 32, 76, 70, 198, 80, 188, 28, 35,
+		239, 60, 17, 7, 200, 54, 162, 250, 26, 108, 178, 104, 121, 221, 49, 106, 42, 89, 66, 186, 24, 12, 20, 147, 115,
+		26, 89, 15, 116, 250, 157, 2, 65, 0, 219, 40, 154, 56, 70, 141, 117, 169, 108, 219, 246, 155, 152, 94, 178, 70,
+		241, 201, 194, 170, 200, 59, 29, 14, 29, 240, 14, 14, 5, 185, 211, 154, 180, 208, 127, 35, 111, 143, 217, 196,
+		24, 53, 55, 56, 196, 115, 214, 114, 153, 151, 171, 32, 208, 179, 78, 203, 117, 51, 125, 193, 40, 119, 245, 87,
+		2, 65, 0, 132, 67, 210, 13, 48, 152, 108, 227, 136, 0, 65, 230, 54, 138, 101, 209, 144, 227, 134, 214, 108, 43,
+		192, 251, 10, 9, 67, 175, 126, 45, 125, 103, 232, 208, 102, 35, 24, 35, 239, 191, 238, 166, 196, 196, 156, 254,
+		119, 99, 164, 88, 188, 141, 205, 141, 144, 39, 251, 46, 164, 102, 175, 246, 19, 197, 2, 65, 0, 191, 136, 144,
+		159, 182, 41, 83, 55, 171, 7, 226, 82, 193, 171, 161, 43, 23, 141, 57, 48, 128, 166, 9, 18, 153, 95, 127, 41,
+		10, 32, 9, 171, 31, 115, 72, 105, 243, 202, 72, 139, 116, 140, 173, 162, 83, 46, 217, 176, 118, 67, 115, 47,
+		206, 181, 166, 155, 113, 230, 122, 117, 33, 165, 21, 41, 2, 64, 53, 159, 93, 216, 165, 26, 36, 253, 116, 113, 5,
+		119, 76, 214, 210, 194, 131, 246, 149, 233, 123, 74, 103, 181, 94, 17, 76, 17, 207, 55, 217, 104, 97, 111, 202,
+		253, 123, 164, 18, 68, 55, 1, 134, 166, 166, 195, 47, 132, 163, 18, 189, 61, 189, 69, 121, 35, 16, 140, 140, 79,
+		165, 85, 14, 46}
+	//time.Sleep(10 * time.Second)
+	//publicKeyBytes := x509.MarshalPKCS1PublicKey((*privateKey).Public().(*rsa.PublicKey))
+	//fmt.Println("Public key: ", publicKeyBytes)
 
-	publicKeyBytes := x509.MarshalPKCS1PublicKey((*privateKey).Public().(*rsa.PublicKey))
+	publicKeyBytes := []byte{48, 129, 137, 2, 129, 129, 0, 169, 220, 206, 138, 229, 219, 40, 160, 216, 236, 57, 19, 232,
+		109, 185, 145, 220, 114, 38, 234, 241, 149, 113, 210, 149, 83, 41, 56, 98, 136, 70, 179, 16, 170, 243, 93, 249,
+		205, 119, 51, 28, 221, 169, 131, 180, 248, 161, 167, 135, 15, 126, 194, 160, 228, 96, 36, 228, 254, 80, 4,
+		136, 3, 95, 22, 104, 245, 195, 3, 116, 112, 73, 87, 172, 107, 255, 56, 69, 132, 211, 36, 24, 239, 132, 153, 199,
+		26, 81, 18, 64, 188, 14, 91, 246, 208, 109, 64, 170, 66, 147, 254, 164, 39, 109, 162, 23, 137, 181, 114, 68, 84,
+		126, 203, 225, 48, 171, 178, 25, 174, 199, 193, 225, 252, 63, 245, 59, 148, 108, 91, 2, 3, 1, 0, 1}
 	for len(CConj) < messLen {
 		concatKey := make([]byte, 16)
 		for i := 0; i < 8; i++ {
@@ -321,7 +407,7 @@ func Main() {
 	}
 	fmt.Println(len(CConj), messLen)
 
-	nWorkers := 12
+	nWorkers := 1
 	jobQueue := make(chan Job, nWorkers+1)
 	resultQueue := make(chan []any, nWorkers+1)
 	var wg sync.WaitGroup
@@ -355,6 +441,7 @@ func Main() {
 	p := n / 8
 	nBlock := len(arr) / 64
 	blocks := make([][][]int, nBlock)
+	invBlocks := make([][][]int, nBlock)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -381,6 +468,7 @@ func Main() {
 	t4 := time.Now().UnixMicro()
 	//calculate the dct of each block
 	dctBlocks := make([][][]float64, nBlock)
+	invDCTBlocks := make([][][]float64, nBlock)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
@@ -418,22 +506,37 @@ func Main() {
 		{72, 92, 95, 98, 112, 100, 103, 99},
 	}
 	QDCTBlocks := make([][][]float64, nBlock)
+	invQDCTBlocks := make([][][]float64, nBlock)
+	iMess := 0
+	l := 0
 	for k := 0; k < nBlock; k++ {
 		if entropy[k] > meanEntropy {
 			QDCTBlocks[k] = make([][]float64, 8)
+			invQDCTBlocks[k] = make([][]float64, 8)
+			var factor float64
+			if qualityFactor > 50 {
+				factor = float64(100-qualityFactor) / 50.0
+			} else {
+				factor = 50.0 / float64(qualityFactor)
+			}
+
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
 				for i := 0; i < 8; i++ {
 					QDCTBlocks[k][i] = make([]float64, 8)
+					invQDCTBlocks[k][i] = make([]float64, 8)
 					for j := 0; j < 8; j++ {
 						wg.Add(1)
-						jobQueue <- Job{f: quantize, args: []any{&QDCTBlocks, &dctBlocks, &QMatrix, qualityFactor, k, i, j}, OutputResults: false}
+						jobQueue <- Job{f: quantize, args: []any{&QDCTBlocks, &dctBlocks, &QMatrix, k, i, j, factor}, OutputResults: false}
 					}
 				}
 			}()
 			wg.Wait()
 			coeffVector := make([]float64, 64)
+			invCoeffVector := make([]float64, 64)
+			copy(invCoeffVector, coeffVector)
+			//zigzag scan
 			x := 0
 			y := 0
 			dir := 1
@@ -463,8 +566,112 @@ func Main() {
 					}
 				}
 			}
+			for j := 1; j < 8; j++ {
+				if bits.GetBit(&CConj, l) == 1 {
+					if mode == 0 {
+						if coeffVector[j] < 0 {
+							invCoeffVector[j] = float64(-R(-int(math.Round(coeffVector[j])), bits.GetBit(&messageBytes, iMess)))
+						} else {
+							invCoeffVector[j] = float64(R(int(math.Round(coeffVector[j])), bits.GetBit(&messageBytes, iMess)))
+						}
+					} else {
+						if iMess/8 > len(messageDecodeBytes) {
+							messageDecodeBytes = append(messageDecodeBytes, 0)
+						}
+						bits.SetBit(&messageDecodeBytes, iMess, invR(int(math.Abs(math.Round(coeffVector[j])))))
+					}
+					iMess++
+				} else {
+					invCoeffVector[j] = coeffVector[j]
+				}
+				l++
+			}
+
+			//inverse zigzag scan
+			x = 0
+			y = 0
+			dir = 1
+			for i := 0; i < 64; i++ {
+				invQDCTBlocks[k][x][y] = invCoeffVector[i]
+				if dir == 1 {
+					if y == 0 && x != 7 {
+						x++
+						dir = 0
+					} else if x == 7 {
+						y++
+						dir = 0
+					} else {
+						x++
+						y--
+					}
+				} else {
+					if x == 0 && y != 7 {
+						y++
+						dir = 1
+					} else if y == 7 {
+						x++
+						dir = 1
+					} else {
+						x--
+						y++
+					}
+				}
+			}
+			//multiply by the quantization matrix
+			wg.Add(1)
+			invDCTBlocks[k] = make([][]float64, 8)
+			go func() {
+				defer wg.Done()
+				for i := 0; i < 8; i++ {
+					invDCTBlocks[k][i] = make([]float64, 8)
+					for j := 0; j < 8; j++ {
+						wg.Add(1)
+						jobQueue <- Job{f: dequantize, args: []any{&invQDCTBlocks, &invDCTBlocks, &QMatrix, k, i, j, factor}, OutputResults: false}
+					}
+				}
+			}()
+			wg.Wait()
+			//inverse DCT
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				wg.Add(1)
+				invBlocks[k] = make([][]int, 8)
+				jobQueue <- Job{f: invdct, args: []any{&invBlocks[k], &invDCTBlocks[k], &cosineArr, k}, OutputResults: false}
+			}()
+			wg.Wait()
+
+		} else {
+			invBlocks[k] = blocks[k]
 		}
 	}
+	//merge blocks
+	invArr := make([]int, len(arr))
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for k := 0; k < len(blocks); k++ {
+			wg.Add(1)
+			jobQueue <- Job{f: merge8x8, args: []any{&invBlocks, &invArr, n, p, k}, OutputResults: false}
+		}
+	}()
+	wg.Wait()
+
+	//draw image
+	invImg := image.NewRGBA(img.Rect)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < len(invArr)/3; i++ {
+			wg.Add(1)
+			jobQueue <- Job{f: writeImg, args: []any{invImg, &invArr, i}, OutputResults: false}
+		}
+	}()
+	wg.Wait()
+
+	//save image
+	file, _ := os.Create("output.png")
+	png.Encode(file, invImg)
 
 	t6 := time.Now().UnixMicro()
 	fmt.Println("mean entropy:", meanEntropy)
@@ -476,4 +683,15 @@ func Main() {
 	fmt.Println("Total Time taken:", t6-t1, "µs")
 
 	//SaveImage("./test/test.png", img)
+}
+
+func writeImg(args ...any) []any {
+	invImg := args[0].(*image.RGBA)
+	invArr := args[1].(*[]int)
+	i := args[2].(int)
+	invImg.Pix[i*4] = uint8((*invArr)[i] + 128)
+	invImg.Pix[i*4+1] = uint8((*invArr)[i] + 128)
+	invImg.Pix[i*4+2] = uint8((*invArr)[i] + 128)
+	invImg.Pix[i*4+3] = 255
+	return nil
 }

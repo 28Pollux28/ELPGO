@@ -17,3 +17,11 @@ func Mean(numbers []float64) float64 {
 	}
 	return sum / float64(len(numbers))
 }
+
+func Min(a, b int) int {
+	if a < b {
+		return a
+	} else {
+		return b
+	}
+}
