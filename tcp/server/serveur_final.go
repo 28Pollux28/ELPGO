@@ -73,7 +73,7 @@ func main() {
 		fmt.Println("Temps écoulé!")
 
 		// Ouvrir l'image "img.png"
-		imgFile, err := os.Open("serverTCP/samedi/img.png")
+		imgFile, err := os.Open("server/samedi/img.png")
 		fmt.Println(os.Getwd())
 		fmt.Println(err)
 		fmt.Println("Image téléchargé dans le serveur")
