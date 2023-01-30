@@ -90,7 +90,7 @@ func Encode(data []byte, key []byte, img *image.RGBA) (*image.RGBA, error) {
 	if len(data)+4 > len(img.Pix)/8 {
 		return nil, fmt.Errorf("data too long")
 	}
-	nWorkers := 12
+	nWorkers := 24
 	jobQueue := make(chan Job, nWorkers+1)
 	resultQueue := make(chan []any, nWorkers+1)
 	var wg sync.WaitGroup
@@ -203,7 +203,7 @@ func Encode(data []byte, key []byte, img *image.RGBA) (*image.RGBA, error) {
 }
 
 func Decode(img *image.RGBA, key []byte) ([]byte, error) {
-	nWorkers := 12
+	nWorkers := 24
 	jobQueue := make(chan Job, nWorkers+1)
 	resultQueue := make(chan []any, nWorkers+1)
 	var wg sync.WaitGroup

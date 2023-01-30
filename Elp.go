@@ -7,42 +7,33 @@ import (
 	"image"
 	"image/png"
 	"os"
-	"sync"
 	"time"
-	//"time"
 )
 
-func worker(wg *sync.WaitGroup, img *image.RGBA, jobs chan []uint /*, results chan<- []uint8*/) {
-	for i := <-jobs; i != nil; i = <-jobs {
-		image2.Filter(img, i[0], i[1], 1, 0, 0, -1)
-		wg.Done()
-	}
-
-}
-
 func main() {
-
 	data, _ := os.ReadFile("./test/512.png") //"Bonjour Gaspard, prochaine étape, envoie moi ta carte bleue :)" /*orld ! It's a beautiful day to try and do steganography!*/
 	privateKeyBytes := []byte{48, 130, 2, 94, 2, 1, 0, 2}
 	img := image2.LoadImage("./test/webb.png")
-	//fmt.Println("sending message : ", data)
-	stegoImg, err := stegano.Encode(data, privateKeyBytes, img)
-	if err != nil {
-		fmt.Println(err)
-	} else {
-		if stegoImg != nil {
-			image2.SaveImage("./output.png", stegoImg)
+	for i := 0; i < 10; i++ {
+		//fmt.Println("sending message : ", data)
+		stegoImg, err := stegano.Encode(data, privateKeyBytes, img)
+		if err != nil {
+			fmt.Println(err)
+		} else {
+			if stegoImg != nil {
+				image2.SaveImage("./output.png", stegoImg)
+			}
 		}
-	}
-	time.Sleep(1 * time.Second)
+		time.Sleep(1 * time.Second)
 
-	message2, _ := stegano.Decode(stegoImg, privateKeyBytes)
-	create, err := os.Create("./output2.png")
-	if err != nil {
-		fmt.Println(err)
+		message2, _ := stegano.Decode(stegoImg, privateKeyBytes)
+		create, err := os.Create("./output4121512.png")
+		if err != nil {
+			fmt.Println(err)
+		}
+		create.Write(message2)
+		create.Close()
 	}
-	create.Write(message2)
-	create.Close()
 
 	//fmt.Println("got message: ", string(message2))
 
